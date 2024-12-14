@@ -86,7 +86,7 @@ namespace Birdie.HuiduSendRealTime
 
             buf = paquete3.Length - 3 - 0x20;
             for (int i = 0; i < buf; i++)
-                paquete3[0x20 + i] = 0x22;
+                paquete3[0x20 + i] = 0x11;
 
             cksum = CalculaChecksum(paquete3[..(paquete3.Length - 3)]);
             paquete3[paquete3.Length - 2] = (byte)(cksum & 0xFF);
