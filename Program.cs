@@ -86,7 +86,7 @@ namespace Birdie.HuiduSendRealTime
 
             buf = paquete3.Length - 3 - 0x20;
             for (int i = 0; i < buf; i++)
-                paquete3[0x20 + i] = 0x11;
+                paquete3[0x20 + i] = 0x33;
 
             cksum = CalculaChecksum(paquete3[..(paquete3.Length - 3)]);
             paquete3[paquete3.Length - 2] = (byte)(cksum & 0xFF);
@@ -111,19 +111,19 @@ namespace Birdie.HuiduSendRealTime
 
             client.Send(paquete1);
 
-            await Task.Delay(100);
+            await Task.Delay(50);
 
             client.Send(paquete2);
 
-            await Task.Delay(100);
+            await Task.Delay(50);
 
             client.Send(paquete3);
 
-            await Task.Delay(100);
+            await Task.Delay(50);
 
             client.Send(paquete4);
 
-            await Task.Delay(100);
+            await Task.Delay(50);
 
             socket._socket.Close();
         }
