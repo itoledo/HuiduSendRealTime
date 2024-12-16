@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using OpenCvSharp;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -8,28 +9,57 @@ namespace Birdie.HuiduSendRealTime
     {
         static async Task Main(string[] args)
         {
-            Console.WriteLine("Hello, World!");
-            //// enviemos un paquete UDP a la dirección de broadcast 255.255.255.255
-            //// hacia el puerto 6101
-            //// con el mensaje "Hola, Mundo!"
-            //Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            //IPAddress broadcast = IPAddress.Parse("192.168.4.255");
-            //IPEndPoint ep = new IPEndPoint(broadcast, 6101);
+            // preparemos el canvas
+            var mat = new Mat(32, 160, MatType.CV_8UC3, Scalar.Black);
 
-            //// abramos un puerto para recibir mensajes por UDP
-            ////udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 65209));
-            ////udpClient.EnableBroadcast = true;
-            ////udpClient.Connect(new System.Net.IPAddress(new byte[] { 255, 255, 255, 255 }), 6101);
-            //byte[] sendBytes = [0x48, 0x54, 0x0, 0x1b, 0x0, 0x4d, 0x18, 0x0, 0xff, 0x0, 0x86, 0xe2, 0x71, 0x0, 0xd, 0x20, 0x0, 0x1, 0xc4, 0x3f, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x5, 0x2f, 0x1d, 0xd9, 0x0, 0x2, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6, 0x53, 0xaa];
-            //var ip = (IPEndPoint)s.LocalEndPoint;
-            //await s.SendToAsync(sendBytes, ep);
-            //s.Close();
-            //UdpClient udpClient = new UdpClient(ip.Port);
-            //IPEndPoint groupEP = new IPEndPoint(IPAddress.Any, 6101);
+            // dibujemos un texto en el mat
+            mat.PutText("Hola", new Point(0, 25), HersheyFonts.HersheySimplex, 1, Scalar.White, 2);
 
-            //var result = udpClient.Receive(ref groupEP);
-            //Console.WriteLine(Encoding.ASCII.GetString(result));
-            //udpClient.Close();
+            // mostrar la imagen en pantalla
+            Cv2.ImShow("mat", mat);
+
+            Cv2.WaitKey(0);
+
+            // convirtamos el mat en 3 arreglos, uno por cada color
+            var b = new byte[160 * 32];
+            var g = new byte[160 * 32];
+            var r = new byte[160 * 32];
+            for (int i = 0; i < 160; i++)
+            {
+                for (int j = 0; j < 32; j++)
+                {
+                    var idx = i + j*160;
+                    var pixel = mat.Get<Vec3b>(j, i);
+                    b[idx] = pixel.Item0;
+                    g[idx] = pixel.Item1;
+                    r[idx] = pixel.Item2;
+                }
+            }
+
+            //for (int i = 0;i <160*32;i++)
+            //{
+            //    b[i] = 255;
+            //    g[i] = r[i] = 0;
+            //}
+
+            // concatenar b, g y r en un solo arreglo monocromático convirtiendo los valores < 128 en 0 y >= 128 en 1, empaquetando 8 pixeles en un byte.
+            // el orden es así:
+            // 1 linea de 160 pixeles de azul
+            // 1 linea de 160 pixeles de rojo
+            // 1 linea de 160 pixeles de verde
+            var img = new byte[(160/8) * 3 * 32];
+            for (int i = 0; i < 160; i++)
+            {
+                for (int j = 0; j < 32; j++)
+                {
+                    var idx = i + j * 160;
+                    var idx2 = (i / 8) + j * 60;
+                    var bitshift = 7 - (i % 8);
+                    img[idx2] |= (byte)((b[idx] >= 1 ? 1u : 0u) << bitshift);
+                    img[idx2 + 20] |= (byte)((r[idx] >= 1 ? 1u : 0u) << bitshift);
+                    img[idx2 + 40] |= (byte)((g[idx] >= 1 ? 1u : 0u) << bitshift);
+                }
+            }
 
             // en los paquetes el byte 0x1a es un contador
             // en todos los paquetes los valores de los bytes 0x1c y 0x1d son iguales
@@ -72,7 +102,7 @@ namespace Birdie.HuiduSendRealTime
             // la imagen parte en 0x54
             // vamos a contar 640 bytes
             for (int i = 0; i < buf; i++)
-                paquete2[0x54 + i] = 0x11;
+                paquete2[0x54 + i] = img[buf];
 
             cksum = CalculaChecksum(paquete2[..(paquete2.Length - 3)]);
             paquete2[paquete2.Length - 2] = (byte)(cksum & 0xFF);
@@ -84,9 +114,9 @@ namespace Birdie.HuiduSendRealTime
             paquete3[0x1c] = id1;
             paquete3[0x1d] = id2;
 
-            buf = paquete3.Length - 3 - 0x20;
-            for (int i = 0; i < buf; i++)
-                paquete3[0x20 + i] = 0x33;
+            var buf2 = paquete3.Length - 3 - 0x20;
+            for (int i = 0; i < buf2; i++)
+                paquete3[0x20 + i] = img[buf + i];
 
             cksum = CalculaChecksum(paquete3[..(paquete3.Length - 3)]);
             paquete3[paquete3.Length - 2] = (byte)(cksum & 0xFF);
@@ -111,19 +141,19 @@ namespace Birdie.HuiduSendRealTime
 
             client.Send(paquete1);
 
-            await Task.Delay(50);
+            await Task.Delay(100);
 
             client.Send(paquete2);
 
-            await Task.Delay(50);
+            await Task.Delay(100);
 
             client.Send(paquete3);
 
-            await Task.Delay(50);
+            await Task.Delay(100);
 
             client.Send(paquete4);
 
-            await Task.Delay(50);
+            await Task.Delay(100);
 
             socket._socket.Close();
         }
